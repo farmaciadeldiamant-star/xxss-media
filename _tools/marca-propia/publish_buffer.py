@@ -3,9 +3,13 @@
 """Programa els posts de posts.json al canal d'Instagram de Buffer (API GraphQL).
 
 Ús:
-  BUFFER_API_KEY=... python3 publish_buffer.py            # dry-run: introspecciona, llista i imprimeix les mutacions
-  BUFFER_API_KEY=... python3 publish_buffer.py --send     # crea els posts programats
-  BUFFER_API_KEY=... python3 publish_buffer.py --status   # només llista el que hi ha programat al canal
+  BUFFER_API_KEY=... python3 publish_buffer.py                 # dry-run: introspecciona, llista i imprimeix les mutacions
+  BUFFER_API_KEY=... python3 publish_buffer.py --send          # crea els posts programats
+  BUFFER_API_KEY=... python3 publish_buffer.py --status        # només llista el que hi ha programat al canal
+  BUFFER_API_KEY=... python3 publish_buffer.py --send --max-queue 10   # pla Free: omple la cua fins a 10 (comptant els ja programats)
+                                                                      # i deixa la resta per a la propera execució (cron diari)
+Idempotent: abans de crear res llegeix els posts del canal i salta els que ja hi són (mateix títol al text).
+Si un post ha quedat enrere perquè la cua era plena, es reprograma al dia següent lliure a la mateixa hora (no es perd cap post).
 
 L'script s'adapta a l'esquema real (introspecció) perquè l'API és beta i els noms poden canviar.
 """
@@ -103,10 +107,18 @@ def build_input(fields, channel_id, p):
 
 MUT = """mutation($input: CreatePostInput!){ createPost(input:$input){ ... on PostActionSuccess { post { id dueAt status } } ... on MutationError { message } } }"""
 
+def arg_int(flag, default):
+    if flag in sys.argv:
+        return int(sys.argv[sys.argv.index(flag) + 1])
+    return default
+
 def main():
     if not KEY:
         sys.exit("Falta BUFFER_API_KEY a l'entorn.")
     send = "--send" in sys.argv; status = "--status" in sys.argv
+    max_queue = arg_int("--max-queue", 0)   # 0 = sense límit de cua (plans de pagament)
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
     posts = json.load(open(POSTS_FILE, encoding="utf-8"))
     state = json.load(open(STATE_FILE)) if os.path.exists(STATE_FILE) else {}
 
@@ -130,13 +142,24 @@ def main():
     fields = cp["inputFields"]
     print("CreatePostInput:", [f["name"] for f in fields])
 
-    for p in posts:
-        if p["id"] in state:
-            print(p["id"], "ja creat:", state[p["id"]]); continue
-        day = p["due_at"][:10]
-        dup = [e for e in by_day.get(day, []) if "marca pròpia" in (e.get("text") or "").lower() or p["title"].lower() in (e.get("text") or "").lower()]
-        if dup:
-            print(p["id"], "DUPLICAT el", day, "→ salto"); continue
+    scheduled_now = [e for e in existing if (e.get("status") or "").lower() in ("scheduled", "pending", "queued")]
+    free_slots = (max_queue - len(scheduled_now)) if max_queue else 10**6
+    print(f"Programats ara: {len(scheduled_now)}; límit de cua: {max_queue or 'cap'}; forats lliures: {free_slots if max_queue else '∞'}")
+    all_texts = " || ".join((e.get("text") or "").lower() for e in existing)
+    used_days = set(by_day.keys())
+    created_here = 0
+    for p in sorted(posts, key=lambda x: x["due_at"]):
+        if p["title"].lower() in all_texts:
+            print(p["id"], "ja és a Buffer → salto"); continue
+        if free_slots <= 0:
+            print(p["id"], "cua plena → es crearà en una propera execució"); continue
+        # si la data ja ha passat (cua plena dies enrere), reprograma al següent dia lliure a la mateixa hora
+        due = datetime.strptime(p["due_at"], "%Y-%m-%dT%H:%M:%S.000Z").replace(tzinfo=timezone.utc)
+        while due <= now + timedelta(hours=1) or (due.strftime("%Y-%m-%d") in used_days and due.strftime("%Y-%m-%d") != p["due_at"][:10]):
+            due += timedelta(days=1)
+        if due.strftime("%Y-%m-%dT%H:%M:%S.000Z") != p["due_at"]:
+            print(p["id"], "reprogramat de", p["due_at"], "a", due.strftime("%Y-%m-%dT%H:%M:%S.000Z"))
+            p = dict(p, due_at=due.strftime("%Y-%m-%dT%H:%M:%S.000Z"))
         inp = build_input(fields, ch["id"], p)
         if not send:
             print(f"\n--- DRY RUN {p['id']} {p['due_local']} ({len(p['images'])} imatges)")
