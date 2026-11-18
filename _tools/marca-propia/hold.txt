@@ -1,0 +1,39 @@
+# Posts que NO s'envien a Buffer: no han passat la porta legal del pipeline (2026-11-18).
+# Format: ID motiu. Per alliberar-ne un: corregeix el contingut, torna'l a passar per la porta i esborra'n la linia.
+# Detall per post: xxss-farmacia/reports/marca-propia-revisio-legal.md
+P01 porta legal: cal revisar el text
+P02 producte sanitari: cal autoritzacio previa de publicitat
+B01 porta legal: cal revisar el text
+P03 producte sanitari: cal autoritzacio previa de publicitat
+P04 producte sanitari: cal autoritzacio previa de publicitat
+B02 porta legal: cal revisar el text
+P05 porta legal: cal revisar el text
+P06 porta legal: cal revisar el text
+B03 porta legal: cal revisar el text
+P08 porta legal: cal revisar el text
+B04 porta legal: cal revisar el text
+P09 porta legal: cal revisar el text
+P10 producte sanitari: cal autoritzacio previa de publicitat
+P11 porta legal: cal revisar el text
+P13 producte sanitari: cal autoritzacio previa de publicitat
+B05 porta legal: cal revisar el text
+P14 porta legal: cal revisar el text
+P15 porta legal: cal revisar el text
+B06 porta legal: cal revisar el text
+P16 porta legal: cal revisar el text
+P17 porta legal: cal revisar el text
+B07 porta legal: cal revisar el text
+P18 porta legal: cal revisar el text
+P19 porta legal: cal revisar el text
+B08 porta legal: cal revisar el text
+P20 porta legal: cal revisar el text
+P21 porta legal: cal revisar el text
+B09 porta legal: cal revisar el text
+P22 porta legal: cal revisar el text
+P23 porta legal: cal revisar el text
+B10 porta legal: cal revisar el text
+P25 porta legal: cal revisar el text
+B11 porta legal: cal revisar el text
+P26 porta legal: cal revisar el text
+P27 producte sanitari: cal autoritzacio previa de publicitat
+B12 porta legal: cal revisar el text

@@ -3,176 +3,238 @@
 """Programa els posts de posts.json al canal d'Instagram de Buffer (API GraphQL).
 
 Ús:
-  BUFFER_API_KEY=... python3 publish_buffer.py                 # dry-run: introspecciona, llista i imprimeix les mutacions
-  BUFFER_API_KEY=... python3 publish_buffer.py --send          # crea els posts programats
-  BUFFER_API_KEY=... python3 publish_buffer.py --status        # només llista el que hi ha programat al canal
-  BUFFER_API_KEY=... python3 publish_buffer.py --send --max-queue 10   # pla Free: omple la cua fins a 10 (comptant els ja programats)
-                                                                      # i deixa la resta per a la propera execució (cron diari)
-Idempotent: abans de crear res llegeix els posts del canal i salta els que ja hi són (mateix títol al text).
-Si un post ha quedat enrere perquè la cua era plena, es reprograma al dia següent lliure a la mateixa hora (no es perd cap post).
+  python publish_buffer.py --status                      # què hi ha a la cua del canal i límits del pla
+  python publish_buffer.py                               # dry-run: imprimeix les mutacions, no envia res
+  python publish_buffer.py --send                        # pla de pagament: programa tots els pendents
+  python publish_buffer.py --send --max-queue 10 --max-own 5
+        # pla Free: la cua del compte és de 10 peces (posts I stories de qualsevol origen).
+        # --max-queue: no passar mai de N peces a la cua; --max-own: com a màxim N posts d'aquesta
+        # sèrie alhora, perquè el pipeline diari (5 peces cada vespre) hi càpiga sempre.
 
-L'script s'adapta a l'esquema real (introspecció) perquè l'API és beta i els noms poden canviar.
+BUFFER_API_KEY: de l'entorn o, si no hi és, del .env del pipeline (C:\\FarmaServer\\xxss-farmacia\\.env).
+
+Idempotent: buffer_state.json (local, no versionat) recorda quins posts s'han creat; a més es compara
+l'inici de la caption amb el que hi ha programat o enviat al canal. Si la data d'un post ja ha passat,
+es mou al següent dia lliure d'aquesta sèrie a la mateixa hora. hold.txt llista ids que NO s'envien.
+
+Esquema verificat per introspecció (2026-11-07 i 2026-11-18):
+  channels(input:{organizationId}) · posts(input:{organizationId, filter:{channelIds,status}}, first)
+  createPost(input:{channelId, text, assets:[{image:{url, metadata:{altText}}}], dueAt, mode,
+                    schedulingType, needsApproval!, metadata:{instagram:{type, shouldShareToFeed!}}})
+  El primer comentari (firstComment) és de pagament: al pla Free els hashtags van al final del text.
 """
-import os, sys, json, time
+import json
+import os
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+
 import httpx
 
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
 API = "https://api.buffer.com"
-KEY = os.environ.get("BUFFER_API_KEY")
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-POSTS_FILE = os.path.join(ROOT, "posts.json")
-STATE_FILE = os.path.join(ROOT, "buffer_state.json")
+HERE = os.path.dirname(os.path.abspath(__file__))
+POSTS_FILE = os.path.join(HERE, "posts.json")
+STATE_FILE = os.path.join(HERE, "buffer_state.json")
+HOLD_FILE = os.path.join(HERE, "hold.txt")
+PIPELINE_ENV = os.environ.get("XXSS_ENV_FILE") or os.path.normpath(os.path.join(HERE, "..", "..", "..", "xxss-farmacia", ".env"))
+MAX_CAPTION = 2200
 
-def gql(query, variables=None):
-    r = httpx.post(API, json={"query": query, "variables": variables or {}},
-                   headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"}, timeout=60)
-    r.raise_for_status()
-    j = r.json()
-    if "errors" in j:
-        raise RuntimeError(json.dumps(j["errors"], ensure_ascii=False, indent=1))
-    return j["data"]
 
-def type_fields(name):
-    d = gql("""query($n:String!){ __type(name:$n){ name kind inputFields{ name type{ name kind ofType{ name kind ofType{ name kind ofType{ name kind }}}}} fields{ name args{ name } type{ name kind ofType{ name kind ofType{ name kind }}}} enumValues{ name } } }""", {"n": name})
-    return d["__type"]
+def env_value(name):
+    v = os.environ.get(name)
+    if v:
+        return v.strip()
+    if os.path.exists(PIPELINE_ENV):
+        for line in open(PIPELINE_ENV, encoding="utf-8", errors="replace"):
+            if line.startswith(name + "="):
+                return line.split("=", 1)[1].strip()
+    return None
 
-def tname(t):
-    while t and not t.get("name"):
-        t = t.get("ofType")
-    return t.get("name") if t else None
 
-def introspect():
-    info = {}
-    for n in ["CreatePostInput", "Mutation", "Query", "PostSchedulingType", "PostMode", "CreatePostAssetsInput",
-              "AssetsInput", "PostMetadataInput", "InstagramPostMetadataInput", "InstagramMetadataInput", "InstagramPostType"]:
-        try:
-            t = type_fields(n)
-            if t: info[n] = t
-        except Exception as e:
-            pass
-    return info
+KEY = env_value("BUFFER_API_KEY")
+FIRST_COMMENT = (env_value("BUFFER_FIRST_COMMENT") or "0") == "1"   # només amb pla de pagament
 
-def find_org_and_channel():
-    # Provem les formes més habituals de l'esquema
-    for q in ["query{ account{ organizations{ id name channels{ id name service displayName } } } }",
-              "query{ organizations{ id name channels{ id name service displayName } } }",
-              "query{ me{ organizations{ id name channels{ id name service } } } }"]:
-        try:
-            d = gql(q)
-            orgs = d.get("account", d).get("organizations") if isinstance(d.get("account", d), dict) else d.get("organizations")
-            if orgs: return orgs
-        except Exception as e:
-            last = e
-    raise RuntimeError(f"No he pogut llistar organitzacions/canals: {last}")
 
-def list_posts(channel_id):
-    # Llista posts del canal (scheduled). L'esquema real pot variar: provem dues formes.
-    for q in ["""query($c:ID!){ posts(input:{filters:{channelIds:[$c]}, first:200}){ edges{ node{ id text dueAt status assets{ id } } } } }""",
-              """query($c:ID!){ posts(channelIds:[$c], first:200){ edges{ node{ id text dueAt status } } } }"""]:
-        try:
-            d = gql(q, {"c": channel_id})
-            return [e["node"] for e in d["posts"]["edges"]]
-        except Exception as e:
-            last = e
-    print("  (no he pogut llistar els posts existents:", str(last)[:200], ")")
-    return []
+def gql(query, variables=None, tries=4):
+    for attempt in range(tries):
+        r = httpx.post(API, json={"query": query, "variables": variables or {}},
+                       headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"}, timeout=60)
+        if r.status_code == 429:
+            wait = int(r.headers.get("Retry-After") or 0) or 60 * (attempt + 1)
+            print(f"  429 (límit de l'API): espero {wait} s")
+            time.sleep(min(wait, 900))
+            continue
+        r.raise_for_status()
+        j = r.json()
+        if j.get("errors"):
+            raise RuntimeError(json.dumps(j["errors"], ensure_ascii=False, indent=1))
+        return j["data"]
+    raise RuntimeError("l'API de Buffer segueix tornant 429 després de diversos intents")
 
-def build_input(fields, channel_id, p):
-    names = {f["name"]: tname(f["type"]) for f in fields}
-    inp = {"text": p["caption"], "schedulingType": "automatic", "mode": "customScheduled", "dueAt": p["due_at"]}
-    if "channelId" in names: inp["channelId"] = channel_id
-    elif "channelIds" in names: inp["channelIds"] = [channel_id]
-    # imatges
-    if "assets" in names:
-        at = names["assets"]
-        afields = {f["name"] for f in (type_fields(at) or {}).get("inputFields", [])} if at else set()
-        if "images" in afields:
-            inp["assets"] = {"images": [{"url": u} for u in p["images"]]}
+
+def org_and_channel():
+    acc = gql("{ account { organizations { id name limits { scheduledPosts channels } } } }")["account"]
+    org = acc["organizations"][0]
+    chans = gql("query($i: ChannelsInput!){ channels(input:$i){ id name service type isDisconnected } }",
+                {"i": {"organizationId": org["id"]}})["channels"]
+    fixed = env_value("BUFFER_INSTAGRAM_CHANNEL_ID")
+    ig = [c for c in chans if c["service"].lower() == "instagram" and (not fixed or c["id"] == fixed)]
+    if not ig:
+        sys.exit(f"No hi ha cap canal d'Instagram connectat. Canals: {chans}")
+    return org, ig[0]
+
+
+def list_posts(org_id, channel_id, status):
+    q = """query($i: PostsInput!, $n: Int){ posts(input:$i, first:$n){ edges{ node{ id text dueAt status
+            metadata{ ... on InstagramPostMetadata { type } } } } } }"""
+    d = gql(q, {"i": {"organizationId": org_id, "filter": {"channelIds": [channel_id], "status": [status]}}, "n": 100})
+    return [e["node"] for e in d["posts"]["edges"]]
+
+
+def caption_head(text):
+    return " ".join((text or "").split())[:60].lower()
+
+
+def build_input(channel_id, p):
+    text = p["caption"].rstrip()
+    ig = {"type": "post", "shouldShareToFeed": True}
+    if p.get("hashtags"):
+        if FIRST_COMMENT:
+            ig["firstComment"] = p["hashtags"]
         else:
-            inp["assets"] = [{"url": u} for u in p["images"]]
-    # metadata instagram: tipus post + primer comentari amb hashtags
-    first_comment_done = False
-    if "metadata" in names:
-        mt = names["metadata"]; mfields = {f["name"]: tname(f["type"]) for f in (type_fields(mt) or {}).get("inputFields", [])}
-        if "instagram" in mfields:
-            it = mfields["instagram"]; ifields = {f["name"] for f in (type_fields(it) or {}).get("inputFields", [])}
-            ig = {}
-            if "type" in ifields: ig["type"] = "post"
-            if "shouldShareToFeed" in ifields: ig["shouldShareToFeed"] = True
-            for fc in ("firstComment", "first_comment"):
-                if fc in ifields: ig[fc] = p["hashtags"]; first_comment_done = True
-            inp["metadata"] = {"instagram": ig}
-    if not first_comment_done:
-        inp["text"] = p["caption"] + "\n\n" + p["hashtags"]
-    return inp
+            text = f"{text}\n\n{p['hashtags']}"
+    if len(text) > MAX_CAPTION:
+        raise ValueError(f"{p['id']}: caption + hashtags fan {len(text)} caràcters (màxim {MAX_CAPTION})")
+    n = len(p["images"])
+    return {
+        "channelId": channel_id,
+        "text": text,
+        "assets": [{"image": {"url": u, "metadata": {"altText": f"{p['title']} ({i + 1}/{n})"}}} for i, u in enumerate(p["images"])],
+        "dueAt": p["due_at"],
+        "mode": "customScheduled",
+        "schedulingType": "automatic",
+        "needsApproval": False,
+        "source": "xxss-marca-propia",
+        "metadata": {"instagram": ig},
+    }
 
-MUT = """mutation($input: CreatePostInput!){ createPost(input:$input){ ... on PostActionSuccess { post { id dueAt status } } ... on MutationError { message } } }"""
+
+MUT = """mutation($input: CreatePostInput!){ createPost(input:$input){ __typename
+  ... on PostActionSuccess { post { id dueAt status } } ... on MutationError { message } } }"""
+
+
+def images_served(urls):
+    bad = []
+    with httpx.Client(timeout=20, follow_redirects=True) as c:
+        for u in urls:
+            try:
+                r = c.head(u)
+                if r.status_code != 200 or "image" not in r.headers.get("content-type", ""):
+                    bad.append(u)
+            except httpx.HTTPError:
+                bad.append(u)
+    return bad
+
 
 def arg_int(flag, default):
-    if flag in sys.argv:
-        return int(sys.argv[sys.argv.index(flag) + 1])
-    return default
+    return int(sys.argv[sys.argv.index(flag) + 1]) if flag in sys.argv else default
+
+
+def read_hold():
+    held = {}
+    if os.path.exists(HOLD_FILE):
+        for line in open(HOLD_FILE, encoding="utf-8"):
+            line = line.strip()
+            if line and not line.startswith("#"):
+                pid, _, why = line.partition(" ")
+                held[pid] = why.strip()
+    return held
+
 
 def main():
     if not KEY:
-        sys.exit("Falta BUFFER_API_KEY a l'entorn.")
-    send = "--send" in sys.argv; status = "--status" in sys.argv
-    max_queue = arg_int("--max-queue", 0)   # 0 = sense límit de cua (plans de pagament)
-    from datetime import datetime, timedelta, timezone
+        sys.exit("Falta BUFFER_API_KEY (entorn o .env del pipeline).")
+    send = "--send" in sys.argv
+    status = "--status" in sys.argv
+    max_queue = arg_int("--max-queue", 0)   # 0 = sense límit (plans de pagament)
+    max_own = arg_int("--max-own", 0)       # 0 = sense límit propi
     now = datetime.now(timezone.utc)
-    posts = json.load(open(POSTS_FILE, encoding="utf-8"))
-    state = json.load(open(STATE_FILE)) if os.path.exists(STATE_FILE) else {}
+    posts = sorted(json.load(open(POSTS_FILE, encoding="utf-8")), key=lambda x: x["due_at"])
+    state = json.load(open(STATE_FILE, encoding="utf-8")) if os.path.exists(STATE_FILE) else {}
+    held = read_hold()
 
-    orgs = find_org_and_channel()
-    ig = [c for o in orgs for c in o.get("channels", []) if (c.get("service") or "").lower() == "instagram"]
-    if not ig: sys.exit(f"No hi ha cap canal d'Instagram. Canals: {json.dumps(orgs, indent=1)}")
-    ch = ig[0]; print("Canal Instagram:", ch)
+    org, ch = org_and_channel()
+    print(f"Canal: {ch['service']} {ch['name']} ({ch['id']}) · pla: màxim {org['limits']['scheduledPosts']} peces a la cua")
+    scheduled = list_posts(org["id"], ch["id"], "scheduled")
+    sent = list_posts(org["id"], ch["id"], "sent")
+    heads = {caption_head(e.get("text")) for e in scheduled + sent}
+    own_heads = {caption_head(p["caption"]): p["id"] for p in posts}
+    own_scheduled = [e for e in scheduled if caption_head(e.get("text")) in own_heads]
+    print(f"A la cua ara: {len(scheduled)} ({len(own_scheduled)} de marca pròpia) · enviats (últims 100): {len(sent)}")
 
-    existing = list_posts(ch["id"])
-    print(f"Posts existents al canal: {len(existing)}")
-    by_day = {}
-    for e in existing:
-        if e.get("dueAt"): by_day.setdefault(e["dueAt"][:10], []).append(e)
     if status:
-        for d in sorted(by_day): print(d, [ (e['status'], (e.get('text') or '')[:40]) for e in by_day[d]])
+        for e in sorted(scheduled, key=lambda x: x.get("dueAt") or ""):
+            kind = (e.get("metadata") or {}).get("type") or "?"
+            mine = own_heads.get(caption_head(e.get("text")), "")
+            print(f"  {e.get('dueAt')}  {kind:<6} {mine:<4} {' '.join((e.get('text') or '').split())[:70]}")
+        done = [p["id"] for p in posts if p["id"] in state or caption_head(p["caption"]) in heads]
+        print(f"Marca pròpia: {len(done)} creats de {len(posts)} · retinguts (hold.txt): {len(held)}")
         return
 
-    info = introspect()
-    cp = info.get("CreatePostInput")
-    if not cp: sys.exit("No trobo CreatePostInput a l'esquema; revisa l'API.")
-    fields = cp["inputFields"]
-    print("CreatePostInput:", [f["name"] for f in fields])
-
-    scheduled_now = [e for e in existing if (e.get("status") or "").lower() in ("scheduled", "pending", "queued")]
-    free_slots = (max_queue - len(scheduled_now)) if max_queue else 10**6
-    print(f"Programats ara: {len(scheduled_now)}; límit de cua: {max_queue or 'cap'}; forats lliures: {free_slots if max_queue else '∞'}")
-    all_texts = " || ".join((e.get("text") or "").lower() for e in existing)
-    used_days = set(by_day.keys())
-    created_here = 0
-    for p in sorted(posts, key=lambda x: x["due_at"]):
-        if p["title"].lower() in all_texts:
-            print(p["id"], "ja és a Buffer → salto"); continue
-        if free_slots <= 0:
-            print(p["id"], "cua plena → es crearà en una propera execució"); continue
-        # si la data ja ha passat (cua plena dies enrere), reprograma al següent dia lliure a la mateixa hora
+    free_queue = (max_queue - len(scheduled)) if max_queue else 10 ** 6
+    free_own = (max_own - len(own_scheduled)) if max_own else 10 ** 6
+    free = min(free_queue, free_own)
+    print(f"Forats: cua {free_queue if max_queue else '∞'} · propis {free_own if max_own else '∞'} → es poden crear {max(free, 0) if free < 10 ** 6 else 'tots'}")
+    used_days = {(e.get("dueAt") or "")[:10] for e in own_scheduled}
+    created = pending = 0
+    for p in posts:
+        pid = p["id"]
+        if pid in state or caption_head(p["caption"]) in heads:
+            continue
+        if pid in held:
+            print(f"{pid} retingut: {held[pid]}")
+            continue
+        if free <= 0:
+            pending += 1
+            continue
         due = datetime.strptime(p["due_at"], "%Y-%m-%dT%H:%M:%S.000Z").replace(tzinfo=timezone.utc)
         while due <= now + timedelta(hours=1) or (due.strftime("%Y-%m-%d") in used_days and due.strftime("%Y-%m-%d") != p["due_at"][:10]):
             due += timedelta(days=1)
-        if due.strftime("%Y-%m-%dT%H:%M:%S.000Z") != p["due_at"]:
-            print(p["id"], "reprogramat de", p["due_at"], "a", due.strftime("%Y-%m-%dT%H:%M:%S.000Z"))
-            p = dict(p, due_at=due.strftime("%Y-%m-%dT%H:%M:%S.000Z"))
-        inp = build_input(fields, ch["id"], p)
+        new_due = due.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        if new_due != p["due_at"]:
+            print(f"{pid} reprogramat de {p['due_at']} a {new_due}")
+            p = dict(p, due_at=new_due)
+        inp = build_input(ch["id"], p)
         if not send:
-            print(f"\n--- DRY RUN {p['id']} {p['due_local']} ({len(p['images'])} imatges)")
-            print(json.dumps({k: (v if k != "text" else v[:120] + "…") for k, v in inp.items()}, ensure_ascii=False, indent=1))
+            print(f"\n--- DRY RUN {pid} {p['due_at']} ({len(p['images'])} imatges) {p['title']}")
+            print(json.dumps({k: (v if k != "text" else v[:110] + "…") for k, v in inp.items()}, ensure_ascii=False, indent=1))
+            free -= 1
+            used_days.add(new_due[:10])
             continue
-        d = gql(MUT, {"input": inp})
-        res = d["createPost"]
+        bad = images_served(p["images"])
+        if bad:
+            print(f"{pid} NO creat: imatges no servides per GitHub Pages: {bad[:2]}")
+            continue
+        res = gql(MUT, {"input": inp})["createPost"]
         if res.get("post"):
-            state[p["id"]] = res["post"]; print(p["id"], "OK", res["post"])
+            state[pid] = {**res["post"], "title": p["title"]}
+            json.dump(state, open(STATE_FILE, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            print(f"{pid} OK {res['post']['dueAt']} {p['title']}")
+            created += 1
+            free -= 1
+            used_days.add(new_due[:10])
         else:
-            print(p["id"], "ERROR", res);
-        json.dump(state, open(STATE_FILE, "w"), indent=1)
-        time.sleep(1.5)
+            print(f"{pid} ERROR {res.get('message') or res}")
+            if "limit" in str(res.get("message", "")).lower():
+                break
+        time.sleep(2)
+    print(f"\nCreats ara: {created} · pendents per a properes execucions: {pending} · retinguts: {len(held)}")
+
 
 if __name__ == "__main__":
     main()
