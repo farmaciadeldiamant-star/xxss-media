@@ -213,25 +213,6 @@ POSTS = [
    f"{CTA}\n\n{LEGAL_SUP}"),
   tags=["#peus", "#camescansades", "#talons", "#urea", "#dermocosmetica", "#consellfarmaceutic"]),
 
- dict(id="P12", slug="mp-esport", date="2027-01-02", time="12:00",
-  title="Propòsit 2027: moure't més",
-  hook="La línia DYNA de nutrició esportiva, ara de marca pròpia.",
-  products=[
-   dict(code="FPPENT80S", name="Proteína Whey Vitality", kind="SUP", body="Concentrat de proteïna de sèrum de llet amb inulina i probiòtics (B. subtilis i B. coagulans). 27 g de proteïna per dosi. Sabor neutre, xocolata o vainilla."),
-   dict(code="FPCRTN60S", name="Creatina", kind="SUP", body="Creatina monohidrat Creapure®, sabor neutre. 60 dosis."),
-   dict(code="FPABCAZ0S", name="Aminoácidos Esenciales BCAA", kind="SUP", body="Leucina, isoleucina i valina en proporció 4:1:1. 100 comprimits."),
-   dict(code="FPAHMBZ0S", name="Activador HMB", kind="SUP", body="Hidroximetilbutirat 3000 mg per dosi. 100 comprimits."),
-  ],
-  caption=("🏃 Propòsit 2027: moure't més\n\n"
-   "Si un dels propòsits és tornar a entrenar, la línia DYNA de marca pròpia t'acompanya:\n\n"
-   "• Proteína Whey Vitality: 27 g de proteïna per dosi, amb fibra i probiòtics.\n"
-   "• Creatina Creapure®: monohidrat de qualitat, sabor neutre.\n"
-   "• Aminoácidos Esenciales BCAA 4:1:1.\n"
-   "• Activador HMB 3000 mg.\n\n"
-   "Les proteïnes contribueixen a augmentar i conservar la massa muscular, i la creatina augmenta el rendiment físic en sèries successives d'exercici breu d'alta intensitat (amb 3 g al dia).\n\n"
-   f"Abans de començar, pregunta'ns: no tot serveix per a tothom, especialment si prens medicació o tens algun problema de ronyó. {CTA}\n\n{LEGAL_SUP}"),
-  tags=["#esport", "#proteina", "#creatina", "#entrenament", "#nutricioesportiva", "#propositsanynou"]),
-
  dict(id="P13", slug="mp-boca", date="2027-01-05", time="19:00",
   title="Boca sana cada dia",
   hook="Dentifrici, col·lutoris i un gel per a les aftes.",
