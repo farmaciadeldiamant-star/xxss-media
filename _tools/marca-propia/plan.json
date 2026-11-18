@@ -1,0 +1,31 @@
+{
+  "posts": [
+    {"id": "P01", "slug": "mp-defenses", "date": "2026-11-21", "time": "12:00", "title": "Defenses a punt per a l'hivern", "codes": ["FPAAIF63S", "FPALCRZ2S", "FPAVCEG2S", "FPAVD3Z0S"]},
+    {"id": "P02", "slug": "mp-gola", "date": "2026-11-24", "time": "19:00", "title": "Gola irritada? Aquests són els nostres", "codes": ["FPAAGPZ2S", "FPAAPRZ3S", "FPAASG11S", "FPPSGJZ0S"]},
+    {"id": "P03", "slug": "mp-tos", "date": "2026-11-28", "time": "12:00", "title": "Tos: xarops i spray de marca pròpia", "codes": ["FPAAST63S", "FPAASJ63S", "FPAASP62S", "FPAMFS20S"]},
+    {"id": "P04", "slug": "mp-refredat", "date": "2026-12-01", "time": "19:00", "title": "Kit de refredat", "codes": ["FPAAF5Z1S", "FPAMUCX0S", "FPCNIP50S", "FPAAMFX2S"]},
+    {"id": "P05", "slug": "mp-mans-llavis", "date": "2026-12-05", "time": "12:00", "title": "Mans i llavis protegits del fred", "codes": ["FPCCCM40S", "FPCCMA40S", "FPCACL11S", "FPCASL11S"]},
+    {"id": "P06", "slug": "mp-pell-seca", "date": "2026-12-08", "time": "19:00", "title": "Pell seca a l'hivern: de la dutxa a la crema", "codes": ["FPBDO480S", "FPICBL71S", "FPCCIC72S", "FPCCLC72S"]},
+    {"id": "P07", "slug": "mp-regal-osmotica", "date": "2026-12-12", "time": "12:00", "title": "Idea de regal: la rutina antiedat osmòtica", "codes": ["FPCVOC35S", "FPCVSO23S", "FPCVOO15S", "FPCVOB33S"]},
+    {"id": "P08", "slug": "mp-descans", "date": "2026-12-15", "time": "19:00", "title": "Dormir millor en època de festes", "codes": ["FPATMEZ2S", "FPMLGMZ1S", "FPMLTS11S", "FPVLNTZ0S"]},
+    {"id": "P09", "slug": "mp-cabell", "date": "2026-12-19", "time": "12:00", "title": "Cabell fort i cuidat", "codes": ["FPIEFO81S", "FPIEFCG1S", "FPACMTZ1S", "FPIEMC62S"]},
+    {"id": "P10", "slug": "mp-digestio-festes", "date": "2026-12-22", "time": "19:00", "title": "Àpats de festa, digestió tranquil·la", "codes": ["FPAADTZ1S", "FPAACOZ3S", "FPAAEPZ1S", "FPAAAAZ0S"]},
+    {"id": "P11", "slug": "mp-peus-cames", "date": "2026-12-29", "time": "19:00", "title": "Peus i cames després de tant de caminar", "codes": ["FPCCCT51S", "FPCCPS51S", "FPCAGG52S", "FPAAVCZ1S"]},
+    {"id": "P12", "slug": "mp-esport", "date": "2027-01-02", "time": "12:00", "title": "Propòsit 2027: moure't més", "codes": ["FPPENT80S", "FPCRTN60S", "FPABCAZ0S", "FPAHMBZ0S"]},
+    {"id": "P13", "slug": "mp-boca", "date": "2027-01-05", "time": "19:00", "title": "Boca sana cada dia", "codes": ["FPITDE51S", "FPCACO61S", "FPCCLX61S", "FPGAFT10S"]},
+    {"id": "P14", "slug": "mp-flora", "date": "2027-01-09", "time": "12:00", "title": "Ferments làctics: la nostra gamma", "codes": ["FPAAEF12S", "FPATFTZ3S", "FPATFFX4S", "FPABFBZ0S"]},
+    {"id": "P15", "slug": "mp-magnesi-energia", "date": "2027-01-12", "time": "19:00", "title": "Gener amb energia", "codes": ["FPATMAX1S", "FPATMGZ0S", "FPATMUZ1S", "FPAMVEZ1S"]},
+    {"id": "P16", "slug": "mp-facial-hidratacio", "date": "2027-01-16", "time": "12:00", "title": "Rutina facial d'hidratació", "codes": ["FPCVSM74S", "FPCVIF31S", "FPCVGI30S", "FPSFLA20S"]},
+    {"id": "P17", "slug": "mp-articulacions", "date": "2027-01-19", "time": "19:00", "title": "Col·lagen i companyia", "codes": ["FPAACL12S", "FPARTOX0S", "FPLRNCZ0S", "FPPSTKX0S"]},
+    {"id": "P18", "slug": "mp-bioma-control", "date": "2027-01-23", "time": "12:00", "title": "Pell grassa o amb imperfeccions", "codes": ["FPCVDB63S", "FPCVCB33S", "FPCVTA22S", "FPSLAT60S"]},
+    {"id": "P19", "slug": "mp-intim", "date": "2027-01-26", "time": "19:00", "title": "Higiene íntima: un gel per a cada moment", "codes": ["FPICDI61S", "FPICDL60S", "FPICDA60S", "FPAUROZ1S"]},
+    {"id": "P20", "slug": "mp-baby", "date": "2027-01-30", "time": "12:00", "title": "Línia baby i infantil", "codes": ["FPICBB72S", "FPCABP52S", "FPAAFG11S", "FPAADJZ2S"]},
+    {"id": "P21", "slug": "mp-estres", "date": "2027-02-02", "time": "19:00", "title": "Èpoques d'estrès", "codes": ["FPARDLZ2S", "FPARDLZ1S", "FPRLAXZ0S", "FPAABUZ1S"]},
+    {"id": "P22", "slug": "mp-pell-sensible", "date": "2027-02-06", "time": "12:00", "title": "Pell sensible i amb vermellors", "codes": ["FPCVCM34S", "FPCICO31S", "FPCNIC30S", "FPCVTL64S"]},
+    {"id": "P23", "slug": "mp-serums", "date": "2027-02-09", "time": "19:00", "title": "Sèrums d'actius purs", "codes": ["FPCAVC20S", "FPANIA10S", "FPCAVA21S", "FPCAAR21S"]},
+    {"id": "P24", "slug": "mp-per-a-ell", "date": "2027-02-13", "time": "12:00", "title": "Per a ell", "codes": ["FPCRIU30S", "FPCVCU31S", "FPCVBA60S", "FPIDDT30S"]},
+    {"id": "P25", "slug": "mp-omega-q10", "date": "2027-02-16", "time": "19:00", "title": "Omega-3, Q10 i llevat de arròs vermell", "codes": ["FPAMOMZ2S", "FPAACZZ1S", "FPUBICZ0S", "FPACTPZ0S"]},
+    {"id": "P26", "slug": "mp-benestar-femeni", "date": "2027-02-20", "time": "12:00", "title": "Benestar femení", "codes": ["FPAAMTZ0S", "FPAUDFX1S", "FPAAUTZ4S", "FPD3K2Z0S"]},
+    {"id": "P27", "slug": "mp-ulls", "date": "2027-02-23", "time": "19:00", "title": "Ulls cansats, mirada descansada", "codes": ["FPGOHY11S", "FPCSLOG2S", "FPCVCC22S", "FPCVOL11S"]}
+  ]
+}
